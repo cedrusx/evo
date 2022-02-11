@@ -64,6 +64,41 @@ def matching_time_indices(stamps_1: np.ndarray, stamps_2: np.ndarray,
     return matching_indices_1, matching_indices_2
 
 
+def matching_shortest_distance(positions_1, positions_2, search_range):
+    """
+    针对轨迹1中的每个position，寻找轨迹2中最接近的position作为关联数据
+    只适用于已经align好的两条轨迹
+    """
+    matching_indices_1 = []
+    matching_indices_2 = []
+    id2 = 0
+    for id1 in range(len(positions_1)):  # 取数量的写法不一定对
+        pos1 = positions_1[id1]  # 取position的写法不一定对
+        min_dist = float('inf')
+        # 找到轨迹2里接下来search_range个数据中（包括与前一个pos1匹配上的那个），与pos1最接近的那个
+        for searchid in range(search_range):
+            if id2 + searchid > len(positions_2): break
+            pos1 = positions_2[id2 + searchid]  # 取position的写法不一定对
+            dist = np.norm(pos1 - pos2)  # 算距离的写法不一定对
+            if dist < min_dist:
+                min_dist = dist
+                best_id2 = id2 + searchid
+        if len(matching_indices_1) == 0 or best_id2 > id2:
+            matching_indices_1.append(id1)
+            matching_indices_2.append(best_id2)
+        else:
+            # 轨迹1前后两个数据关联到轨迹2的同一个数据，选择距离更小的那个
+            pos1 = positions_1[matching_indices_1[-1]]
+            pos2 = positions_2[id2]
+            dist_last = np.norm(pos1, pos2)
+            pos1 = positions_1[id1]
+            dist_this = np.norm(pos1, pos2)
+            if dist_last > dist_this:
+                matching_indices_1[-1] = id1
+        id2 = best_id2
+    return matching_indices_1, matching_indices_2
+
+
 def associate_trajectories(
         traj_1: PoseTrajectory3D, traj_2: PoseTrajectory3D,
         max_diff: float = 0.01, offset_2: float = 0.0,
@@ -88,9 +123,14 @@ def associate_trajectories(
     traj_short = copy.deepcopy(traj_1) if snd_longer else copy.deepcopy(traj_2)
     max_pairs = len(traj_short.timestamps)
 
-    matching_indices_short, matching_indices_long = matching_time_indices(
-        traj_short.timestamps, traj_long.timestamps, max_diff,
-        offset_2 if snd_longer else -offset_2)
+    arg_associate_without_time = True  # TODO add and pass this argument
+    if arg_associate_without_time:
+        matching_indices_short, matching_indices_long = matching_shortest_distance(
+            traj_short.positions_xyz, traj_long.positions_xyz, max_diff)
+    else:
+        matching_indices_short, matching_indices_long = matching_time_indices(
+            traj_short.timestamps, traj_long.timestamps, max_diff,
+            offset_2 if snd_longer else -offset_2)
     if len(matching_indices_short) != len(matching_indices_long):
         raise SyncException(
             "matching_time_indices returned unequal number of indices")
